@@ -17,13 +17,20 @@ población de clientes (data drift).
 ## Estructura del proyecto
 
 ```
-src/
-├── cargar_datos.py              # Carga el Excel crudo y el dataset ya limpio
-├── ft_engineering.py            # Preprocesamiento (imputación, one-hot, split)
-├── compresion_eda.ipynb         # Limpieza y EDA (crudo -> dataset_limpio.xlsx)
-├── model_training_evaluation.ipynb  # Modelos supervisados y no supervisados
-├── model_monitoring.py          # App de Streamlit: monitoreo y data drift
-└── data/processed/dataset_limpio.xlsx
+├── src/
+│   ├── cargar_datos.py              # Carga el Excel crudo y el dataset ya limpio
+│   ├── ft_engineering.py            # Preprocesamiento (imputación, one-hot, split)
+│   ├── compresion_eda.ipynb         # Limpieza y EDA (crudo -> dataset_limpio.xlsx)
+│   ├── model_training_evaluation.ipynb  # Modelos supervisados y no supervisados
+│   ├── model_monitoring.py          # App de Streamlit: monitoreo y data drift
+│   ├── exportar_modelo.py           # Entrena el mejor modelo y genera models/model.pkl
+│   ├── model_deploy.py              # API FastAPI: expone el modelo en /predict
+│   └── data/processed/dataset_limpio.xlsx
+├── models/
+│   └── model.pkl                    # Preprocesador + modelo, generado por exportar_modelo.py
+├── Dockerfile
+├── .dockerignore
+└── requirements.txt
 ```
 
 ---
@@ -236,6 +243,67 @@ lateral — la limpieza la aplica la app misma.
 
 ---
 
+## 6. Despliegue del modelo (API + Docker)
+
+Se despliega **CatBoost**, el modelo con mejor ROC-AUC (0.706) entre los
+comparados en la sección 3.
+
+### `exportar_modelo.py`
+
+Entrena CatBoost sobre `X_train` (los mismos datos preprocesados que se
+evaluaron en el notebook) y guarda **preprocesador + modelo juntos** en
+`models/model.pkl`. Se guardan juntos porque sin el preprocesador ya
+ajustado, el modelo no sabría qué hacer con datos crudos nuevos.
+
+```
+cd src
+python exportar_modelo.py
+```
+
+### `model_deploy.py`
+
+API con FastAPI que carga `model.pkl` y expone:
+
+- `GET /saludo` — verificación rápida de que la API está viva.
+- `POST /predict` — predicción por lote. Recibe
+  `{"registros": [ {...}, {...} ]}`, valida cada registro contra un
+  esquema (`RegistroCliente`, con los mismos 25 campos que usa el
+  modelo) antes de predecir, y devuelve `prediccion_pago_atiempo` y
+  `probabilidad_pago_atiempo` por registro.
+
+Si el modelo no cargó, el lote viene vacío, o algún registro no cumple el
+esquema, la API responde con el código HTTP correspondiente (503, 400 o
+422) y un detalle del error, en vez de fallar en silencio.
+
+Probado de punta a punta (entrenar → exportar → cargar en la API →
+predecir sobre datos reales, incluyendo lote vacío y registro incompleto)
+antes de entregarlo.
+
+```
+cd src
+python model_deploy.py
+# o: uvicorn model_deploy:app --host 0.0.0.0 --port 8000
+```
+
+### Imagen Docker
+
+`Dockerfile` instala `requirements.txt`, copia `src/` y `models/`, y corre
+`uvicorn` como servidor. `.dockerignore` excluye notebooks, datos crudos y
+archivos que no hacen falta dentro de la imagen.
+
+```
+docker build -t pago-atiempo-api .
+docker run -p 8000:8000 pago-atiempo-api
+```
+
+La API queda disponible en `http://localhost:8000/predict`.
+
+> **Nota:** hay que correr `exportar_modelo.py` (y tener `models/model.pkl`
+> generado) antes de construir la imagen — el Dockerfile no entrena nada,
+> solo empaqueta lo que ya existe.
+
+---
+
 ## Resumen de decisiones y limitaciones conocidas
 
 - `puntaje` se excluye en todo el proyecto (supervisado, no supervisado y
@@ -255,5 +323,10 @@ lateral — la limpieza la aplica la app misma.
   fallar o descartarse — con la base de drift simulada, esto le pasó al
   100% de los registros. El drift sigue siendo visible porque cambia la
   proporción entre letras, pero vale la pena recordar que el redondeo
-  reduce cuánto se moría el código real (por ejemplo, un 12 y un 9 pueden
+  reduce cuánto se movió el código real (por ejemplo, un 12 y un 9 pueden
   terminar en la misma letra).
+- El modelo desplegado (`model.pkl`) se entrena solo con `X_train`, no con
+  todo el dataset etiquetado — mismos datos que se evaluaron en la sección
+  3. Si se quiere exprimir un poco más de desempeño en producción,
+  `exportar_modelo.py` podría reentrenarse con `X_train` + `X_test`
+  combinados, ya que la evaluación honesta del modelo ya quedó hecha.

@@ -219,3 +219,4 @@ __marimo__/
 
 #catboost carpeta automatica
 src/catboost_info/
+catboost_info/

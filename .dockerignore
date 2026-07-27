@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.git/
+.gitignore
+.ipynb_checkpoints/
+*.ipynb
+data/
+*.xlsx
+README*.md
