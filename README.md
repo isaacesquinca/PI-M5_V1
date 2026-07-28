@@ -16,6 +16,7 @@ de información en vez de un predictor legítimo.
 
 - **`cargar_datos.py`**
   - `cargarDatos()`: lee `Base_de_datos.xlsx` (datos crudos).
+- **`cargarDatosLimpios()` carga los datos ya limpios 
 
 ## Proceso de limpieza
 

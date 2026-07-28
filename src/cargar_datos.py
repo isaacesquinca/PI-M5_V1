@@ -44,3 +44,31 @@ if __name__ == "__main__":
     print(datos.head())
 
     print(datos.columns)
+
+####################
+### Creamos una funcion para cargar datos ya limpios que pasaron por limpieza y eda 
+
+def cargarDatosLimpios():
+
+    # Ruta donde está este archivo (src)
+    ruta_actual = os.path.dirname(os.path.abspath(__file__))
+
+    # Ruta del dataset limpio
+    ruta_excel = os.path.join(
+        ruta_actual,
+        "data",
+        "processed",
+        "dataset_limpio.xlsx"
+    )
+
+    if not os.path.exists(ruta_excel):
+        raise FileNotFoundError(f"No se encontró el archivo:\n{ruta_excel}")
+
+    df = pd.read_excel(ruta_excel)
+
+    return df
+if __name__ == "__main__":
+
+    print("=== DATASET LIMPIO ===")
+    df = cargarDatosLimpios()
+    print(df.head())
